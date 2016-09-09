@@ -1,11 +1,11 @@
-# Petrichor
+# Ukko
 
-Petrichor is the code name for my hobby OS-development project. At the moment
-the project includes a bootable floppy with a boot sector written in 16-bit
-x86 assembly, and a stage-2 image called STAGE2.BIN, written in 32-bit x86
-assembly. The program in the boot sector loads and runs STAGE2.BIN from the
-floppy disk. The stage-2 image is a simple, toy program with demonstration
-commands.
+Ukko is the code name for a boot loader project forked from another project
+(codenamed Petrichor) to be a community-oriented project and a dedicated boot
+loader. At the moment the project includes a bootable floppy with a boot sector written in 16-bit x86 assembly, and a stage-2 image called STAGE2.BIN, written
+in 32-bit x86 assembly. The program in the boot sector loads and runs
+STAGE2.BIN from the floppy disk. The stage-2 image is a simple, toy program
+with demonstration commands.
 
 ## Building
 

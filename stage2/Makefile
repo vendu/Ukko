@@ -1,6 +1,8 @@
-CC=clang
-CFLAGS=-ffreestanding -fno-builtin -nostdlib \
-	--target=i686-pc-none-elf -march=i686 -c
+CC=gcc
+CFLAGS=-g -m32 -O -ffreestanding -fno-builtin -nostdlib \
+	-march=i386 -c
+LD=ld
+LDFLAGS=-melf_i386
 ASM=nasm
 ASMFLAGS=-f elf
 OBJECTS= \
@@ -24,7 +26,7 @@ OBJECTS= \
 all: stage2.bin
 
 stage2.bin: stage2.ld $(OBJECTS)
-	i686-elf-ld -s -T stage2.ld -o stage2.bin $(OBJECTS)
+	$(LD) $(LDFLAGS) -s -T stage2.ld -o stage2.bin $(OBJECTS)
 
 init16.o: init16.asm
 	$(ASM) $(ASMFLAGS) -o $@ $<
@@ -33,7 +35,7 @@ init32.o: init32.asm
 	$(ASM) $(ASMFLAGS) -o $@ $<
 
 init32c.o: init32c.c screen.h shell.h timer.h
-	clang $(CFLAGS) -o $@ $<
+	$(CC) $(CFLAGS) -o $@ $<
 
 acpi.o: acpi.c acpi.h screen.h util.h
 	$(CC) $(CFLAGS) -o acpi.o acpi.c

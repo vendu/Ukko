@@ -32,6 +32,7 @@
 int blStrCmp(const char *mem1, const char *mem2)
 {
 	int rVal;
+
 	asm(
 		"0:\n"
 		"\tlodsb\n"
@@ -50,8 +51,8 @@ int blStrCmp(const char *mem1, const char *mem2)
 		"\tnop"
 		: "=a"(rVal)
 		: "S"(mem1), "D"(mem2)
-		: "esi", "edi"
 	);
+        
 	return rVal;
 }
 

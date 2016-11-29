@@ -1,7 +1,7 @@
 # stage1.asm: Boot sector startup program
 #
-# Copyright 2015, Vincent Damewood
-# Copyright 2016 Tuomo Ven‰l‰inen
+# Copyright 2015 Vincent Damewood
+# Copyright 2016 Tuomo Ven√§l√§inen
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -73,7 +73,7 @@ fat_extended_boot_record:
 	.ascii "FAT12   "    # System ID# Unreliable.
 
 # === BOOT LOADER ===
-_start:	
+_start:
 start:
 	# Setup segments and stack
 	xorw %ax, %ax
@@ -98,7 +98,7 @@ find_disk_values:
 	pushw %ax # fat_sector, sector on disk that has FAT
 
 	# The data sectors start at (rootdir + rootsize), we subtract 2 because FAT
-	# enties 0 and 1 are reserved, so actual data starts at 2. 
+	# enties 0 and 1 are reserved, so actual data starts at 2.
 	addw $rootsize - 2, %ax
 	pushw %ax # data_sector
 
@@ -226,7 +226,7 @@ error_freeze:
 #8(%bp): Destination starting memory address
 # returns bx: Memory address that's one past
 #        the end of the loaded section
-load:	
+load:
 load_fpreamb:
 	pushw %bp
 	movw %sp, %bp

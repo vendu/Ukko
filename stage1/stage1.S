@@ -27,7 +27,9 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-.org	0x7c00
+#.org	0x7c00
+
+.globl	_start
 
 .code16
 
@@ -39,8 +41,7 @@ rootsize = 14		# Number of sectors in root directory.
 
 			# === FAT DATA ===
 
-_beginfile:
-
+_start:	
 	jmp start
 	nop
 fat_bios_parameter_block:
@@ -73,7 +74,6 @@ fat_extended_boot_record:
 	.ascii "FAT12   "    # System ID# Unreliable.
 
 # === BOOT LOADER ===
-_start:	
 start:
 	# Setup segments and stack
 	xorw %ax, %ax
@@ -282,8 +282,7 @@ load_freturn:
 # === Non-executable Data ===
 st2_file:	.ascii "STAGE2  BIN"
 bootdrive:	.byte 0
-pad:		.fill 446 - ($pad - $_beginfile), 1, 0x00
-# pad:        times 446-($-$$) db 0
+.org	446
 ptable:		.fill 64, 1, 0x00
 bootsig:	.short 0xAA55
 

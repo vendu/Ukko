@@ -27,12 +27,7 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#.org	0x7c00
-
-.globl	_start
-
-.code16
-
+ptable_start = 0x7C00 + 446
 data_start = 0x500	# Begining of memory where we'll load data: The
                         # directory and file allocation tables.
 stg2_segment = 0x1000	# Where to load the stage-2 image.
@@ -40,6 +35,10 @@ stack_base = 0x7C00     # This is where the stack starts.
 rootsize = 14		# Number of sectors in root directory.
 
 			# === FAT DATA ===
+
+.globl	_start
+
+.code16
 
 _start:	
 	jmp start
@@ -81,7 +80,7 @@ start:
 	movw %ax, %es
 	movw %ax, %ss
 	movw $stack_base, %sp
-	movw %sp, %bp
+	movw $stack_base, %bp
 	movb %dl, bootdrive
 
 fat_sector = -2
@@ -135,9 +134,9 @@ file_next:
 	jz error_notfound	# So, panic and cry about it.
 
 	pushw %cx # Inner Loop
-	mov st2_file, %si
-	mov %bx, %di
-	mov $11, %cx
+	movw $st2_file, %si
+	movw %bx, %di
+	movw $11, %cx
 	repe cmpsb
 	popw %cx
 	je load_file
@@ -192,7 +191,7 @@ load_next:
 	shrw $4, %cx    # If odd, garbage bits are the low-order bits. Shift.
 	jmp fat_align_end
 fat_align_even:
-	andw $0xffff, %cx # If even, garbage bits are the high-order bits. Zero.
+	andw $0xfff, %cx # If even, garbage bits are the high-order bits. Zero.
 fat_align_end:
 	# At this point cx has the next cluster
 	cmp $0xff8, %cx	# If the next cluster is not an EOF marker...

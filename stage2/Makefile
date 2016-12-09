@@ -2,10 +2,13 @@ CC=gcc
 CFLAGS=-g -m32 -O -ffreestanding -fno-builtin -nostdlib \
 	-march=i386 -c
 LD=ld
-LDFLAGS=-melf_i386
+LDFLAGS=-g -melf_i386 -N -static
 ASM=nasm
 ASMFLAGS=-f elf
+AS=as
+ASFLAGS=-g --32
 OBJECTS= \
+	util16.o \
 	init16.o \
 	init32.o \
 	init32c.o \
@@ -26,10 +29,19 @@ OBJECTS= \
 all: stage2.bin
 
 stage2.bin: stage2.ld $(OBJECTS)
-	$(LD) $(LDFLAGS) -s -T stage2.ld -o stage2.bin $(OBJECTS)
+	$(LD) $(LDFLAGS) -g -T stage2.ld -o stage2.bin $(OBJECTS)
+#	objcopy --only-keep-debug stage2.elf stage2.db
+#	objcopy --add-gnu-debuglink stage2.db stage2.elf
+#	objcopy -O binary stage2.elf stage2.bin
 
-init16.o: init16.asm
-	$(ASM) $(ASMFLAGS) -o $@ $<
+init16.o: init16.S
+	$(AS) $(ASFLAGS) -o $@ $<
+
+util16.o: util16.S
+	$(AS) $(ASFLAGS) -o $@ $<
+
+#init32.o: init32.S
+#	$(AS) $(ASFLAGS) -o $@ $<
 
 init32.o: init32.asm
 	$(ASM) $(ASMFLAGS) -o $@ $<
@@ -76,6 +88,6 @@ util.o: util.c util.h
 distclean: clean
 
 clean:
-	rm -rf stage2.bin *.o
+	rm -rf stage2.bin *.o stage2.elf stage2.db
 
 .PHONY: all clean distclean

@@ -1,6 +1,6 @@
 # stage1.asm: Boot sector startup program
 #
-# Copyright 2015, Vincent Damewood
+# Copyright 2015 Vincent Damewood
 # Copyright 2016 Tuomo Venäläinen
 # All rights reserved.
 #
@@ -22,55 +22,58 @@
 # HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
 # SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
 # LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES# LOSS OF USE,
-# DATA, OR PROFITS (OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
 # THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+.globl	_start
+
 ptable_start = 0x7C00 + 446
 data_start = 0x500	# Begining of memory where we'll load data: The
                         # directory and file allocation tables.
-stg2_segment = 0x1000	# Where to load the stage-2 image.
+stg2_segment = 0x1000	# Where to load the stage-2 image - 64 kilobytes
 stack_base = 0x7C00     # This is where the stack starts.
 rootsize = 14		# Number of sectors in root directory.
 
 			# === FAT DATA ===
 
-.globl	_start
-
 .code16
+
+.text
 
 _start:	
 	jmp start
 	nop
+
 fat_bios_parameter_block:
-	.ascii "MSWIN4.1" # OEM ID
-	.short 512        # bytes per sector
+.ascii "MSWIN4.1" # OEM ID
+.short 512        # bytes per sector
 cluster:
-	.byte 1          # sectors per cluster
+.byte 1          # sectors per cluster
 reserved:
-	.short 1          # Number of reserved clusters
-fatcount:
-	.byte 2          # Number of file-allocation tables
+.short 1          # Number of reserved clusters
+fat_count:
+.byte 2          # Number of file-allocation tables
 entries:
-	.short 224        # Number of root entires
-	.short 2880       # Number of sectors
-	.byte 0xF0       # Media descriptor
-fatsize:
-	.short 9          # Sectors per file-allocation table
+.short 224        # Number of root entires
+.short 2880       # Number of sectors
+.byte 0xF0       # Media descriptor
+fat_size:
+.short 9          # Sectors per file-allocation table
 sectors:
-	.short 18         # Sectors per track (cylinder)
+.short 18         # Sectors per track (cylinder)
 heads:
-	.short 2          # Number of heads/sides
-	.long 0          # Hidden sectors
-	.long 0          # Number of sectors (if > 2^16-1)
+.short 2          # Number of heads/sides
+.long 0          # Hidden sectors
+.long 0          # Number of sectors (if > 2^16-1)
 fat_extended_boot_record:
-	.byte 0x00	# Drive number
-	.byte 0x00      # Current Head (Unused)
-	.byte 0x29	# Signature (0x28 or 0x29)
-	.long 0x00000000 # Volume ID, will be replaced by formatter
-	.ascii "BOOTDISK   " # Volume label
-	.ascii "FAT12   "    # System ID# Unreliable.
+.byte 0x00	# Drive number
+.byte 0x00      # Current Head (Unused)
+.byte 0x29	# Signature (0x28 or 0x29)
+.long 0x00000000 # Volume ID, will be replaced by formatter
+.ascii "BOOTDISK   " # Volume label
+.ascii "FAT12   "    # System ID# Unreliable.
 
 # === BOOT LOADER ===
 start:
@@ -83,16 +86,16 @@ start:
 	movw $stack_base, %bp
 	movb %dl, bootdrive
 
-fat_sector = -2
-data_sector = -4
-fat_memory = -6
-root_memory = -8
+#fat_sector = -2
+#data_sector = -4
+#fat_memory = -6
+#root_memory = -8
 
 find_disk_values:
 	# Calculate Where root Directory is.
-	# (Sector # = fatcount * fatsize + reserved)
-	movb fatcount, %al
-	mulw fatsize
+	# (Sector # = fat_count * fat_size + reserved)
+	movb fat_count, %al
+	mulw fat_size
 	addw reserved, %ax
 	pushw %ax # fat_sector, sector on disk that has FAT
 
@@ -104,7 +107,7 @@ find_disk_values:
 load_fat:
 	pushw $data_start       # fat_memory, beginning of FAT
 	pushw reserved		# Source
-	pushw fatsize		# Count
+	pushw fat_size		# Count
 	call load
 	addw $4, %sp		# We pushed 3 values to stack, but only pop 2.
 				# Remaining value (the beginning of the FAT in
@@ -173,7 +176,7 @@ load_next:
 	orw %bx, %bx
 	jz error_loads2sec
 
-.find_next_sector:
+load_find_next_sector:
 	# The following bit of magic takes the value of cx, multiplies it by
 	# 1.5 and notes if it was odd or even before the process. This gives
 	# us the memory offset from the beginning of the FAT for the FAT
@@ -200,13 +203,6 @@ fat_align_end:
 jump_to_stage_2:
 	jmp $stg2_segment, $0x80 # Else, We're done loading, jmp to the next stage.
 
-/*
-%undef fat_sector
-%undef data_sector
-%undef fat_memory
-%undef root_memory
-*/
-
 error_loaddir:
 error_loadfat:
 error_notfound:
@@ -220,11 +216,10 @@ error_freeze:
 
 # === FUNCTIONS ===
 
-#4(%bp): Number of sectors to load
-#6(%bp): First sector to load
-#8(%bp): Destination starting memory address
-# returns bx: Memory address that's one past
-#        the end of the loaded section
+# 4(%bp): Number of sectors to load
+# 6(%bp): First sector to load
+# 8(%bp): Destination starting memory address
+# returns bx: Memory address that's one past the end of the loaded section
 load:	
 load_fpreamb:
 	pushw %bp
@@ -279,6 +274,7 @@ load_freturn:
 	ret
 
 # === Non-executable Data ===
+
 st2_file:	.ascii "STAGE2  BIN"
 bootdrive:	.byte 0
 .org	446

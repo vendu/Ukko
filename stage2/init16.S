@@ -103,34 +103,34 @@ mboothdr:
 .code16
 
 Init16:
-	xorl %eax, %eax
-	movw %ax, %dx
-	movw %ax, %es
+	xorl	%eax, %eax
+	movw	%ax, %dx
+	movw	%ax, %es
 
 LoadMemoryTable:
 	# The following blanks a qword for alignment purposes.
-	movl %eax, MemTableCount
-	movl %eax, MemTableCountHi
+	movl	%eax, MemTableCount
+	movl	%eax, MemTableCountHi
 
-	mov $PMemTable, %di
-	xor %ebx, %ebx
-	movl $0x534D4150, %ebx
+	mov	$PMemTable, %di
+	xor	%ebx, %ebx
+	movl	$0x534D4150, %ebx
 _loop:
-	movl $0xE820, %eax
-	movl $24, %ecx
-	int $0x15
-	jc _invalid
-	incw MemTableCount
+	movl	$0xE820, %eax
+	movl	$24, %ecx
+	int	$0x15
+	jc	_invalid
+	incw	MemTableCount
 
-	orl %ebx, %ebx
-	jz _done
-	addw $24, %di
-	jmp _loop
+	orl	%ebx, %ebx
+	jz	_done
+	addw	$24, %di
+	jmp	_loop
 _invalid:
-	xorw %ax, %ax
-	decw %ax
-	movw $24, %cx
-	rep stosb
+	xorw	%ax, %ax
+	decw	%ax
+	movw	$24, %cx
+	rep	stosb
 _done:
 
 #VBEInit:
@@ -140,33 +140,71 @@ _done:
 #	call	vbe_init
 
 EnableA20:
-	movl $0x2401, %eax
-	int $0x15
-
+_a20fast:
+	# try "fast" method for enabling A20
+	inb	$0x92, %al	# check for the method
+	testb	$0x02, %al	# available?
+	jnz	_a20bios	# nope
+	orb	$0x02, %al	# set flag
+	andb	$0xfe, %al	# mask reset flag
+	outb	%al, $0x92	# enable
+	outb	%al, $0x80	# delay
+	jmp	ResetFD		# done
+_a20bios:
+	# try BIOS int 0x15 to enable A20
+	movl	$0x2401, %eax	# enable
+	int	$0x15		# interrupt
+_a20bioschk:
+        movw    $0x2402, %ax    # check status
+        int     $0x15           # interrupt
+        cmp     $0x01, %al      # enabled?
+        je      ResetFD         # yes
+_a20kbd1:
+        inb     $0x64, %al      # get status
+        testb   $0x02, %al      # busy?
+        jnz     _a20kbd1        # yes
+        movb    $0xd1, %al      # write
+        outb    %al, $0x64      # output
+        outb    %al, $0x80      # delay
+_a20kbd2:
+        inb     $0x64, %al      # get status
+        testb   $0x02, %al      # busy?
+        jnz     _a20kbd2        # yes
+        movb    $0xdf, %al      # enable
+        outb    %al, $0x60      # A20
+        outb    %al, $0x80      # delay
+_a20kbd3:
+        inb     $0x64, %al      # get status
+        testb   $0x02, %al      # busy?
+        jnz     _a20kbd3	# yes
+	
+ResetFD:
+	movb	$0x00, %ah
+	movb	$0x00, %dl
+	int	$0x13
 
 LoadGdt:
 	# GdtPointer will be a 32-bit address, so here
 	# we convert it.
-	movl $GdtPointer, %ebx
+	movl	$GdtPointer, %ebx
 
 	# Segment to ds
-	movl %ebx, %eax
-	shrl $4, %eax
-	movw %ax, %ds
+	movl	%ebx, %eax
+	shrl	$4, %eax
+	movw	%ax, %ds
 
 	# Offset to eax. This is probably always going
 	# to be 0, but just in case we calculate here.
-	movl %ebx, %eax
-	andl $0x0F, %eax
+	movl	%ebx, %eax
+	andl	$0x0F, %eax
 
 	cli
-	lgdt (%eax)
+	lgdt	(%eax)
 
 
 EnterProtectedMode:
-	movl %cr0, %eax
-	or $1, %al
-	movl %eax, %cr0
-	ljmpl $0x08, $Init32
-#	jmp dword 0x08:Init32
+	movl	%cr0, %eax
+	or	$0x01, %al
+	movl	%eax, %cr0
+	ljmpl	$0x08, $Init32
 

@@ -329,20 +329,7 @@ static DirectoryEntry *SeekFile(FileSystem *fs, const char *file)
 
 static void PrintEntry(DirectoryEntry *entry)
 {
-		//uint8_t oldColor = scrCacheColor();
-
-		//if (entry->Attr & AttrDirectory)
-		//	scrSetColor(scrBlue);
-		//else if (entry->Attr & (AttrSystem|AttrHidden))
-		//	scrSetColor(scrRed);
-
-		uioPrintN(11,entry->Name);
-		uioPrintChar(' ');
-		uioPrintHexByte(entry->Attr);
-		uioPrintChar(' ');
-		uioPrintHexDWord(entry->FileSize);
-		//uioSetColor(oldColor);
-		uioPrintChar('\n');
+		uioPrintf("%.11s %2hhx %d\n", entry->Name, entry->Attr, entry->FileSize);
 }
 
 void fat12ShowDirectory(drvStorageDevice *device, const char *directory)

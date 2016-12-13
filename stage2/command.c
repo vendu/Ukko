@@ -104,10 +104,7 @@ static int GreetUser(int argc, char *argv[])
 static int TestArgs(int argc, char *argv[])
 {
 	for (int i=0; i<argc; i++)
-	{
-		uioPrint(argv[i]);
-		uioPrintChar('\n');
-	}
+		uioPrintf("%s\n", argv[i]);
 
 	return 0;
 }
@@ -216,10 +213,7 @@ static int TestFloppy(int argc, char *argv[])
 		char *byte = buffers[i];
 		char *limit = byte+0x18;
 		do
-		{
-			uioPrintHexByte(*byte++);
-			uioPrintChar(' ');
-		}
+			uioPrintf("%hhx ", *byte++);
 		while(byte < limit);
 		uioPrintChar('\n');
 	}

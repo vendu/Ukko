@@ -55,17 +55,10 @@ void memShowMap(void)
 {
 	uioPrint("Base     Size     Status\n");
 	for (
-		entry *i = (entry*)0x3308;
-		i < (entry*)(0x3308 + sizeof(entry) * (*((int *)0x3300)));
-		i++)
-	{
-		uioPrintHexDWord(i->base);
-		uioPrintChar(' ');
-		uioPrintHexDWord(i->length);
-		uioPrintChar(' ');
-		uioPrint(StatusTable[i->status]);
-		uioPrintChar('\n');
-	}
+			entry *i = (entry*)0x3308;
+			i < (entry*)(0x3308 + sizeof(entry) * (*((int *)0x3300)));
+			i++)
+		uioPrintf("%.8X %.8x %s\n", i->base, i->length, StatusTable[i->status]);
 }
 
 #define PoolBase 0x30000

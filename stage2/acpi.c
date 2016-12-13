@@ -71,12 +71,7 @@ struct Rsdp
 } __attribute__ ((__packed__));
 typedef struct Rsdp Rsdp;
 
-static char PointerSignature[] = "RSD PTR \n";
-static char PointerHeader[] =    "Addr     Sig      Ch Vendor Rv RSDTAddr\n";
-static char TableHeader[] =      "Addr     Sig  Length   Rv Ch OEM    OEM Tbl  OEMRev   Crtr CrtrRev\n";
 static char PointerError[] =     "Error: RSDP not found\n";
-static char ShutdownFailed[] =   "Error: Shutdown failed.\n";
-static char FacpSignature[] =    "FACP";
 static Rsdp* PointerLocation = (void*)0;
 
 
@@ -84,7 +79,7 @@ static Rsdp *GetPointer(void)
 {
 	if (!PointerLocation)
 		for (unsigned int ecx = 0x000E0000; ecx < 0x00100000; ecx+=0x10)
-			if (blMemCmp((void*)ecx, PointerSignature, 8) == 0)
+			if (blMemCmp((void*)ecx, "RSD PTR \n", 8) == 0)
 				PointerLocation = (Rsdp*)ecx;
 	return PointerLocation;
 }
@@ -99,64 +94,18 @@ void AcpiShowRsdp(void)
 		return;
 	}
 
-	uioPrint(PointerHeader);
-	uioPrintHexDWord((int)p);
-	uioPrintChar(' ');
+	uioPrint("Addr     Sig      Ch Vendor Rv RSDTAddr\n");
 
-	for (int i = 0; i < 8; i++)
-		uioPrintChar(p->signature[i]);
-	uioPrintChar(' ');
-
-	uioPrintHexByte(p->checksum);
-	uioPrintChar(' ');
-
-	for (int i = 0; i < 6; i++)
-		uioPrintChar(p->vendor[i]);
-	uioPrintChar(' ');
-
-	uioPrintHexByte(p->revision);
-	uioPrintChar(' ');
-
-	uioPrintHexDWord((int)p->rootSdt);
-	uioPrintChar(' ');
-	uioPrintChar('\n');
+	uioPrintf("%p %.8s %0.2hhX %.6s %0.2hhX %p\n",
+		p, p->signature, p->checksum, p->vendor, p->revision, p->rootSdt);
 }
 
 static void ShowSdtHeader(SdtHeader *header)
 {
-	uioPrintHexDWord((int)header);
-	uioPrintChar(' ');
-
-	for (int i = 0; i < 4; i++)
-		uioPrintChar(header->signature[i]);
-	uioPrintChar(' ');
-
-	uioPrintHexDWord(header->length);
-	uioPrintChar(' ');
-
-	uioPrintHexByte(header->revision);
-	uioPrintChar(' ');
-
-	uioPrintHexByte(header->checksum);
-	uioPrintChar(' ');
-
-	for (int i = 0; i < 6; i++)
-		uioPrintChar(header->oem[i]);
-	uioPrintChar(' ');
-
-	for (int i = 0; i < 8; i++)
-		uioPrintChar(header->oemTable[i]);
-	uioPrintChar(' ');
-
-	uioPrintHexDWord(header->oemRevision);
-	uioPrintChar(' ');
-
-	for (int i = 0; i < 4; i++)
-		uioPrintChar(header->creator[i]);
-	uioPrintChar(' ');
-
-	uioPrintHexDWord(header->creatorRevision);
-	uioPrintChar('\n');
+	uioPrintf("%.8p %.4s %08X %02hhX %02hhX %.6s %.8s %-8.2X %.4s %08X\n",
+		header, header->signature, header->length, header->revision,
+		header->checksum, header->oem, header->oemTable, header->oemRevision,
+		header->creator, header->creatorRevision);
 }
 
 void AcpiShowTables(void)
@@ -164,7 +113,7 @@ void AcpiShowTables(void)
 	Rsdp *p = GetPointer();
 	if(p)
 	{
-		uioPrint(TableHeader);
+		uioPrint("Addr     Sig  Length   Rv Ch OEM    OEM Tbl  OEMRev   Crtr CrtrRev\n");
 		ShowSdtHeader((SdtHeader *)p->rootSdt);
 
 		unsigned int size = (p->rootSdt->header.length - sizeof(SdtHeader)) / sizeof(SdtHeader*);
@@ -184,7 +133,7 @@ static FacpSdt *FindFacp(void)
 	{
 		unsigned int size = (p->rootSdt->header.length - sizeof(SdtHeader)) / sizeof(SdtHeader*);
 		for (int i = 0; i < size; i++)
-			if (blMemCmp(p->rootSdt->tables[i]->signature, FacpSignature, 4) == 0)
+			if (blMemCmp(p->rootSdt->tables[i]->signature, "FACP", 4) == 0)
 				return (FacpSdt*)p->rootSdt->tables[i];
 	}
 	return (FacpSdt*)0;
@@ -212,5 +161,5 @@ void AcpiShutdown(void)
 	if (port)
 		asm volatile ( "outw %0, %1" : : "a"((unsigned short)0x2000), "d"((unsigned short)port) );
 	else
-		uioPrint(ShutdownFailed);
+		uioPrint("Error: Shutdown failed.\n");
 }

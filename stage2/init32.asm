@@ -32,8 +32,8 @@ extern fdHandleInterrupt
 extern tmrHandleInterrupt
 
 %macro  fprolog 1-*
-	push ebp 
-	mov ebp, esp 
+	push ebp
+	mov ebp, esp
 	%if %1
 		sub esp, (%1*4)
 	%endif
@@ -242,7 +242,7 @@ IntrIsrCommon:
 	%deftok IsrHexToken IsrHexString
 IntrIsr%[IsrHexToken]:
 		cli
-		%if (0)
+		%if (i = 8 || (i >= 10 && i <= 14) ||  i = 17 | i = 30)
 		%else
 			push 0
 		%endif

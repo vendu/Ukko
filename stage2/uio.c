@@ -111,32 +111,437 @@ void uioPrintN(int length, const char *string)
 		uioPrintChar(string[i]);
 }
 
-static void PrintHex(const int count, const int value)
+// printf Support
+#include <stdarg.h>
+
+enum pfLength
 {
-	const unsigned char *v = (const unsigned char *)(&value);
-	for (int i = count-1; i >= 0; i--)
+	DEFAULT,
+	HH,
+	H,
+	L,
+	LL,
+	BIGL
+};
+
+enum pfState
+{
+	END = 0,
+	FLAGS,
+	FIELD_WIDTH,
+	DOT,
+	PRECISION,
+	LENGTH,
+	CONVERSION
+};
+
+enum pfFlagAlign
+{
+	RIGHT = 0, // Align right, space pad
+	ZPAD,      // Align right, zero pad
+	LEFT       // Align left, space pad
+};
+
+enum pfFlagSign
+{
+	NONE = 0,    // Don't show a sign for non-negatives
+	SPACE = ' ', // Space-pad sign for non-negatives
+	PLUS = '+',  // Show + sign for non-negatives
+};
+
+static char *pfSignedDec(char *parseBuffer, long int value)
+{
+	parseBuffer[23] = 0;
+	char *current = parseBuffer + 22;
+	int runningValue = value;
+
+	if (runningValue < 0)
+		runningValue *= -1;
+
+	do
 	{
-		uioPrintChar((v[i] >> 4)  + (((v[i] >> 4)  > 9) ? 0x37 : 0x30));
-		uioPrintChar((v[i] & 0xF) + (((v[i] & 0xF) > 9) ? 0x37 : 0x30));
+		int digit = runningValue % 10;
+		runningValue /= 10;
+		*current-- = '0' + digit;
 	}
+	while(runningValue);
+
+	if (value < 0)
+		*current-- = '-';
+
+	return current+1;
 }
 
-void uioPrintHexByte(uint8_t value)
+static char *pfUnsigned(char *parseBuffer, unsigned long int value, int radix)
 {
-	PrintHex(1, (int)value);
+	parseBuffer[23] = 0;
+	char *current = parseBuffer + 22;
+	int runningValue = value;
+
+	if (runningValue < 0)
+		runningValue *= -1;
+
+	do
+	{
+		int digit = runningValue % radix;
+		runningValue /= radix;
+		*current-- = digit + ((digit>9) ? ('A'-10) : '0');
+	}
+	while(runningValue);
+
+	return current+1;
 }
 
-void uioPrintHexWord(uint16_t value)
+// This function is meant to work similarly to the C standard library
+// printf function.
+//
+// uioPrintf doesn't support:
+//   * '*' values for the field fidth and precision values
+//   * the 'l' length on 'c' or 's' conversions.
+//   * floating-point conversions (a, A, e, E, f,F, g, G)
+//   * the n conversion
+//   * multibyte strings
+//
+// Additionally uioPrintf doesn't return a value.
+void uioPrintf(const char *format, ...)
 {
-	PrintHex(2, (int)value);
-}
+	va_list args;
+	va_start(args, format);
+	for (const char *p = format; *p; p++)
+	{
+		if (*p != '%')
+		{
+			uioPrintChar(*p);
+		}
+		else
+		{
+			enum pfState state = FLAGS;
 
-void uioPrintHexDWord(uint32_t value)
-{
-	PrintHex(4, value);
-}
+			enum pfFlagAlign align = RIGHT;
+			enum pfFlagSign sign = NONE;
+			int alternate = 0;
+			int fieldWidth = 0;
+			int precision = -1;
+			enum pfLength length = DEFAULT;
+			char buffer[24];
+			char *outputStart = buffer + 23;
+			char *outputEnd = buffer + 23;
 
-void uioPrintHexPointer(const void *value)
-{
-	PrintHex(4, (uint32_t)value);
+			p++;
+			while (state)
+			{
+				switch (state)
+				{
+				case FLAGS:
+					switch (*p)
+					{
+						case '-':
+							align = LEFT;
+							p++;
+							break;
+						case '0':
+							if (align != LEFT)
+								align = ZPAD;
+							p++;
+							break;
+						case '+':
+							sign = PLUS;
+							p++;
+							break;
+						case ' ':
+							if (sign != PLUS)
+								sign = SPACE;
+							p++;
+							break;
+						case '#':
+							alternate = -1;
+							p++;
+							break;
+						default:
+							state = FIELD_WIDTH;
+							break;
+					}
+					break;
+				case FIELD_WIDTH:
+					if (*p >= '0' && *p <= '9')
+					{
+						fieldWidth *= 10;
+						fieldWidth += (*p++ - '0');
+
+					}
+					else
+					{
+						state = DOT;
+					}
+					break;
+				case DOT:
+					switch (*p)
+					{
+					case '.':
+						p++;
+						precision = 0;
+						state = PRECISION;
+						break;
+					default:
+						state = LENGTH;
+						break;
+					}
+					break;
+				case PRECISION:
+					if (*p >= '0' && *p <= '9')
+					{
+						precision *= 10;
+						precision += (*p++ - '0');
+					}
+					else
+					{
+						state = LENGTH;
+					}
+					break;
+				case LENGTH:
+					switch (*p)
+					{
+					case 'h':
+						p++;
+						if (*p == 'h')
+						{
+							p++;
+							length = HH;
+						}
+						else
+						{
+							length = H;
+						}
+						state = CONVERSION;
+						break;
+					case 'l':
+						p++;
+						if (*p == 'l')
+						{
+							p++;
+							length = LL;
+						}
+						else
+						{
+							length = L;
+						}
+						state = CONVERSION;
+						break;
+					case 'L':
+						p++;
+						length = BIGL;
+						state = CONVERSION;
+					default:
+						state = CONVERSION;
+						break;
+					}
+					break;
+				case CONVERSION:
+					switch (*p)
+					{
+					case '%':
+						outputStart = buffer + 22;
+						*outputStart = '%';
+						*outputEnd = '\0';
+						break;
+					case 'c': // character
+						outputStart = buffer + 22;
+						*outputStart = (char)va_arg(args, int);
+						*outputEnd = '\0';
+						break;
+					case 's': // string
+						outputStart = va_arg(args, char*);
+						if (precision < 0)
+							for (outputEnd = outputStart; *outputEnd; outputEnd++);
+						else
+							outputEnd = outputStart + precision;
+						break;
+					case 'i':
+					case 'd': // signed decimal
+						switch (length)
+						{
+						case HH:
+							outputStart = pfSignedDec(buffer, (signed char)va_arg(args, int));
+							break;
+						case H:
+							outputStart = pfSignedDec(buffer, (short)va_arg(args, int));
+							break;
+						case DEFAULT:
+							outputStart = pfSignedDec(buffer, va_arg(args, int));
+							break;
+						case L:
+						case LL:
+						case BIGL:
+							outputStart = pfSignedDec(buffer, va_arg(args, long int));
+							break;
+						}
+						break;
+					case 'o': // unsigned octal
+						switch (length)
+						{
+						case HH:
+							outputStart = pfUnsigned(buffer, (unsigned char)va_arg(args, unsigned int), 8);
+							break;
+						case H:
+							outputStart = pfUnsigned(buffer, (unsigned short)va_arg(args, unsigned int), 8);
+							break;
+						case DEFAULT:
+							outputStart = pfUnsigned(buffer, va_arg(args, unsigned int), 8);
+							break;
+						case L:
+						case LL:
+						case BIGL:
+							outputStart = pfUnsigned(buffer, va_arg(args, unsigned long int), 8);
+							break;
+						}
+						break;
+					case 'u': // unsigned decimal
+						switch (length)
+						{
+						case HH:
+							outputStart = pfUnsigned(buffer, (unsigned char)va_arg(args, unsigned int), 10);
+							break;
+						case H:
+							outputStart = pfUnsigned(buffer, (unsigned short)va_arg(args, unsigned int), 10);
+							break;
+						case DEFAULT:
+							outputStart = pfUnsigned(buffer, va_arg(args, unsigned int), 10);
+							break;
+						case L:
+						case LL:
+						case BIGL:
+							outputStart = pfUnsigned(buffer, va_arg(args, unsigned long int), 10);
+							break;
+						}
+						break;
+					case 'x': // unsigned hex (lower case)
+						switch (length)
+						{
+						case HH:
+							outputStart = pfUnsigned(buffer, (unsigned char)va_arg(args, unsigned int), 16);
+							break;
+						case H:
+							outputStart = pfUnsigned(buffer, (unsigned short)va_arg(args, unsigned int), 16);
+							break;
+						case DEFAULT:
+							outputStart = pfUnsigned(buffer, va_arg(args, unsigned int), 16);
+							break;
+						case L:
+						case LL:
+						case BIGL:
+							outputStart = pfUnsigned(buffer, va_arg(args, unsigned long int), 16);
+							break;
+						}
+						break;
+					case 'p': // pointer
+						outputStart = pfUnsigned(buffer, va_arg(args, unsigned int), 16);
+						for (int i = 8 - (outputEnd - outputStart); i > 0; i--)
+						{
+							--outputStart;
+							*outputStart = '0';
+						}
+						break;
+					case 'X': // unsigned hex (upper case)
+						switch (length)
+						{
+						case HH:
+							outputStart = pfUnsigned(buffer, (unsigned char)va_arg(args, unsigned int), 16);
+							break;
+						case H:
+							outputStart = pfUnsigned(buffer, (unsigned short)va_arg(args, unsigned int), 16);
+							break;
+						case DEFAULT:
+							outputStart = pfUnsigned(buffer, va_arg(args, unsigned int), 16);
+							break;
+						case L:
+						case LL:
+						case BIGL:
+							outputStart = pfUnsigned(buffer, va_arg(args, unsigned long int), 16);
+							break;
+						}
+						break;
+					default:
+						*outputEnd = '\0';
+						outputStart = outputEnd;
+					}
+					state = END;
+					break;
+				case END:
+					break;
+				} // switch (state)
+			} // while (state)
+
+			int len = outputEnd - outputStart;
+
+			char prefix[3];
+			for (int i = 0; i < 3; i++) // no access to memset
+				prefix[i] = 0; // = {0,0,0};
+
+			if (sign != NONE && (*p == 'i' || *p == 'd') && *outputStart != '-')
+			{
+				prefix[0] = sign;
+				len++;
+			}
+			else if (alternate && *outputStart != '0')
+			{
+				if (*p == 'o')
+				{
+					prefix[0] = '0';
+					len++;
+				}
+				else if (*p == 'x')
+				{
+					prefix[0] = '0';
+					prefix[1] = 'x';
+					len += 2;
+				}
+				else if (*p == 'X' || *p == 'p')
+				{
+					prefix[0] = '0';
+					prefix[1] = 'x';
+					len += 2;
+				}
+			}
+
+			int zeroCount = 0;
+
+			// for dioux
+			if (*p == 'd' || *p == 'i' || *p == 'o' ||*p == 'p' || *p == 'u' || *p == 'x' || *p == 'X')
+			{
+				if (precision >= 0)
+					zeroCount = precision - (outputEnd - outputStart);
+				else if (align == ZPAD && fieldWidth > 0)
+					zeroCount = fieldWidth - (outputEnd - outputStart);
+			}
+
+			if (zeroCount < 0)
+				zeroCount = 0;
+
+			len += zeroCount;
+
+			if (len < fieldWidth && align == RIGHT)
+				for (int i = fieldWidth - len; i > 0; i--)
+					uioPrintChar(' ');
+			uioPrint(prefix);
+
+
+			for (int i = zeroCount; i > 0; i--)
+					uioPrintChar('0');
+
+			if (*p == 's' && precision >= 0)
+			{
+				uioPrintN(outputEnd-outputStart, outputStart);
+			}
+			else
+			{
+				uioPrint(outputStart);
+			}
+
+			if (len < fieldWidth && align == LEFT)
+				for (int i = fieldWidth - len; i > 0; i--)
+					uioPrintChar(' ');
+		}
+	}
+
+	va_end(args);
 }

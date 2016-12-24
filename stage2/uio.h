@@ -34,12 +34,10 @@
 
 const char *uioPrompt(const char *prompt);
 
+// Output Functions
 void  uioPrint(const char *string);
 void  uioPrintChar(const char c);
-void  uioPrintHexByte(uint8_t value);
-void  uioPrintHexWord(uint16_t value);
-void  uioPrintHexDWord(uint32_t value);
-void  uioPrintHexPointer(const void *value);
+void  uioPrintf(const char *format, ...);
 void  uioPrintN(int length, const char *string);
 
 #endif /* UIO_H */

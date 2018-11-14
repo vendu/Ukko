@@ -1,7 +1,7 @@
 # init16.asm: 16-bit, real-mode initialization
 #
 # Copyright 2015, 2016 Vincent Damewood
-# Copyright 2016 Tuomo Venäläinen
+# Copyright 2016-2018 Tuomo Venäläinen
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -31,60 +31,37 @@
 MBOOT_MAGIC = 0x1badb002
 MBOOT_FLAGS = 0x00000003	# page-align, memory info
 MBOOT_CHKSUM = (-(MBOOT_MAGIC + MBOOT_FLAGS))
-GFX_WIDTH = 1024
-GFX_HEIGHT = 768
-GFX_DEPTH = 24
+MBOOT_GFX_WIDTH = 1024
+MBOOT_GFX_HEIGHT = 768
+MBOOT_GFX_DEPTH = 24
 
-.globl Init16
+.globl init16
 	
-PMemTableCount = 0x3300
-MemTableCount  = 0x3300
-MemTableCountHi = (0x3300 + 4)
-PMemTable = (0x3300 + 8)
+pmemtabcnt = 0x3300
+memtabcnt  = 0x3300
+memtabcnthi = (0x3300 + 4)
+pmemtab = (0x3300 + 8)
+
+.macro _gdtdesc lbl:req, adr:req, lim:req, perm:req, flg:req
+lbl():
+.word	\lim & 0xffff
+.word	\adr & 0xffff
+.byte	(\adr >> 16) & 0xff
+.byte	\perm
+.byte	\flg
+.byte	(\adr >> 24) & 0xff
+.endm
 
 .data
 
-GdtPointer:
-limit: .word 23
-base:  .long GdtTable
+_gdt:
+_gdtdesc _null, 0, 0, 0, 0
+_gdtdesc _syscode, 0, 0xffff, 0x9a, 0xcf
+_gdtdesc _sysdata, 0, 0xffff, 0x92, 0xcf
+_gdtdesc _usrcode, 0, 9xffff, 0xfa, 0xcf
+_gdtdesc _usrdata, 0, 0xffff, 0xf2, 0xcf
 
-GdtTable:
-null:
-	.fill 8, 1, 0x00
-
-sys_code:
-.word 0xFFFF # lower 16 bits of limit
-.word 0x0000 # Low 16 bits of the base
-.byte 0x00   # Next 8 bytes of the base.
-.byte 0x9A   # Access flags, ring, etc
-.byte 0xCF   # Example code set all to 0xCF
-.byte 0x00   # highest 0 bits of base
-
-sys_data:
-.word 0xFFFF # lower 16 bits of limit
-.word 0x0000 # Low 16 bits of the base
-.byte 0x00   # Next 8 bytes of the base.
-.byte 0x92   # Access flags, ring, etc
-.byte 0xCF   # Example code set all to 0xCF
-.byte 0x00   # highest 0 bits of base
-
-usr_code:
-.word 0xFFFF # lower 16 bits of limit
-.word 0x0000 # Low 16 bits of the base
-.byte 0x00   # Next 8 bytes of the base.
-.byte 0xFA   # Access flags, ring, etc
-.byte 0xCF   # Example code set all to 0xCF
-.byte 0x00   # highest 0 bits of base
-
-usr_data:
-.word 0xFFFF # lower 16 bits of limit
-.word 0x0000 # Low 16 bits of the base
-.byte 0x00   # Next 8 bytes of the base.
-.byte 0xF2   # Access flags, ring, etc
-.byte 0xCF   # Example code set all to 0xCF
-.byte 0x00   # highest 0 bits of base
-
-mboothdr:
+_mboothdr:
 .long   MBOOT_MAGIC
 .long   MBOOT_FLAGS
 .long   MBOOT_CHKSUM
@@ -94,39 +71,39 @@ mboothdr:
 .long   0               # bss_end_addr
 .long   0               # entry_addr
 .long   0               # video mode type (linear)
-.long   GFX_WIDTH       # video width
-.long   GFX_HEIGHT      # video height
-.long   GFX_DEPTH       # video depth
+.long   MBOOT_GFX_WIDTH	# video width
+.long   MBOOT_GFX_HEIGHT	# video height
+.long   MBOOT_GFX_DEPTH		# video depth
 
 .text
 
 .code16
 
-Init16:
+init16:
 	xorl	%eax, %eax
 	movw	%ax, %dx
 	movw	%ax, %es
 
-LoadMemoryTable:
-	# The following blanks a qword for alignment purposes.
-	movl	%eax, MemTableCount
-	movl	%eax, MemTableCountHi
+_loadmemtab:
+	# blank qword for alignment
+	movl	%eax, memtabcnt
+	movl	%eax, memtabcnthi
 
-	mov	$PMemTable, %di
-	xor	%ebx, %ebx
+	mov	$pmemtab, %di
+#	xor	%ebx, %ebx
 	movl	$0x534D4150, %ebx
 _loop:
 	movl	$0xE820, %eax
 	movl	$24, %ecx
 	int	$0x15
-	jc	_invalid
-	incw	MemTableCount
+	jc	_failure
+	incw	memtabcnt
 
 	orl	%ebx, %ebx
 	jz	_done
 	addw	$24, %di
 	jmp	_loop
-_invalid:
+_failure:
 	xorw	%ax, %ax
 	decw	%ax
 	movw	$24, %cx
@@ -142,14 +119,14 @@ _done:
 EnableA20:
 _a20fast:
 	# try "fast" method for enabling A20
-	inb	$0x92, %al	# check for the method
+	inb	$0x92, %al	# check for method
 	testb	$0x02, %al	# available?
 	jnz	_a20bios	# nope
 	orb	$0x02, %al	# set flag
 	andb	$0xfe, %al	# mask reset flag
 	outb	%al, $0x92	# enable
 	outb	%al, $0x80	# delay
-	jmp	ResetFD		# done
+	jmp	_resetfd	# done
 _a20bios:
 	# try BIOS int 0x15 to enable A20
 	movl	$0x2401, %eax	# enable
@@ -178,15 +155,15 @@ _a20kbd3:
         testb   $0x02, %al      # busy?
         jnz     _a20kbd3	# yes
 	
-ResetFD:
+_resetfd:
 	movb	$0x00, %ah
 	movb	$0x00, %dl
 	int	$0x13
 
-LoadGdt:
-	# GdtPointer will be a 32-bit address, so here
+_loadgdt:
+	# gdtfptr will be a 32-bit address, so here
 	# we convert it.
-	movl	$GdtPointer, %ebx
+	movl	$gdtfptr, %ebx
 
 	# Segment to ds
 	movl	%ebx, %eax
@@ -202,9 +179,16 @@ LoadGdt:
 	lgdt	(%eax)
 
 
-EnterProtectedMode:
+_protmode:
 	movl	%cr0, %eax
 	or	$0x01, %al
 	movl	%eax, %cr0
-	ljmpl	$0x08, $Init32
+	ljmpl	$0x08, $init32
+
+
+.rodata
+
+gdtfptr:
+limit: .word 23
+base:  .long _gdt
 

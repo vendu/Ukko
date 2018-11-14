@@ -1,7 +1,7 @@
 # stage1.asm: Boot sector startup program
 #
 # Copyright 2015 Vincent Damewood
-# Copyright 2016 Tuomo Venäläinen
+# Copyright 2016-2018 Tuomo Venäläinen
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -11,7 +11,7 @@
 # 1. Redistributions of source code must retain the above copyright
 # notice, this list of conditions and the following disclaimer.
 #
-# 2. Redistributions in binary form must reproduce the above copyright
+# Redistributions in binary form must reproduce the above copyright
 # notice, this list of conditions and the following disclaimer in the
 # documentation and/or other materials provided with the distribution.
 #
@@ -29,154 +29,149 @@
 
 .globl	_start
 
-ptable_start = 0x7C00 + 446
-data_start = 0x500	# Begining of memory where we'll load data: The
+_pagetabadr = 0x7C00 + 446
+_dataadr = 0x500	# Begining of memory where we'll load data: The
                         # directory and file allocation tables.
-stg2_segment = 0x1000	# Where to load the stage-2 image - 64 kilobytes
-stack_base = 0x7C00     # This is where the stack starts.
-rootsize = 14		# Number of sectors in root directory.
+_loadseg = 0x1000	# Where to load the stage-2 image - 64 kilobytes
+_stkbase = 0x7C00	# This is where the stack starts.
+_rootsize = 14		# Number of sectors in root directory.
 
-			# === FAT DATA ===
+# === FAT DATA ===
 
 .code16
 
 .text
 
+start:
 _start:	
-	jmp start
+	jmp boot
 	nop
 
-fat_bios_parameter_block:
-.ascii "MSWIN4.1" # OEM ID
-.short 512        # bytes per sector
-cluster:
-.byte 1          # sectors per cluster
-reserved:
-.short 1          # Number of reserved clusters
-fat_count:
-.byte 2          # Number of file-allocation tables
-entries:
-.short 224        # Number of root entires
-.short 2880       # Number of sectors
-.byte 0xF0       # Media descriptor
-fat_size:
-.short 9          # Sectors per file-allocation table
-sectors:
-.short 18         # Sectors per track (cylinder)
-heads:
-.short 2          # Number of heads/sides
-.long 0          # Hidden sectors
-.long 0          # Number of sectors (if > 2^16-1)
-fat_extended_boot_record:
+_fatbiosparm:
+.ascii "MSWIN4.1"	# OEM ID
+.short 512	# bytes per sector
+_cluster:
+.byte 1         # sectors per cluster
+_resclusters:
+.short 1        # Number of reserved clusters
+_fatcount:
+.byte 2         # Number of file-allocation tables
+_entries:
+.short 224      # Number of root entries
+.short 2880     # Number of sectors
+.byte 0xF0      # Media descriptor
+_fatsize:
+.short 9        # Sectors per file-allocation table
+_sectors:
+.short 18       # Sectors per track (cylinder)
+_heads:
+.short 2        # Number of heads/sides
+.long 0         # Hidden sectors
+.long 0         # Number of sectors (if > 2^16-1)
+_fatxbr:	# extended boot record
 .byte 0x00	# Drive number
 .byte 0x00      # Current Head (Unused)
 .byte 0x29	# Signature (0x28 or 0x29)
-.long 0x00000000 # Volume ID, will be replaced by formatter
+.long 0         # Volume ID, will be replaced by formatter
 .ascii "BOOTDISK   " # Volume label
 .ascii "FAT12   "    # System ID# Unreliable.
 
 # === BOOT LOADER ===
-start:
+
+boot:
 	# Setup segments and stack
 	xorw %ax, %ax
 	movw %ax, %ds
 	movw %ax, %es
 	movw %ax, %ss
-	movw $stack_base, %sp
-	movw $stack_base, %bp
-	movb %dl, bootdrive
+	movw $_stkbase, %sp
+	movw %sp, %bp
+	movb %dl, _bootdrive
 
-#fat_sector = -2
-#data_sector = -4
-#fat_memory = -6
-#root_memory = -8
+_getdiskparm:
+	# calculate root location.
+	# sector = _fatcount * _fatsize + _resclusters)
+	
+	movb _fatcount, %al
+	mulw _fatsize
+	addw _resclusters, %ax
+	pushw %ax	# sector on disk with FAT
 
-find_disk_values:
-	# Calculate Where root Directory is.
-	# (Sector # = fat_count * fat_size + reserved)
-	movb fat_count, %al
-	mulw fat_size
-	addw reserved, %ax
-	pushw %ax # fat_sector, sector on disk that has FAT
+	# data sectors start at rootdir + _rootsize, we subtract 2 because FAT
+	# entries 0 and 1 are reserved, so actual data starts at 2. 
+	addw $_rootsize - 2, %ax
+	pushw %ax
 
-	# The data sectors start at (rootdir + rootsize), we subtract 2 because FAT
-	# enties 0 and 1 are reserved, so actual data starts at 2. 
-	addw $rootsize - 2, %ax
-	pushw %ax # data_sector
-
-load_fat:
-	pushw $data_start       # fat_memory, beginning of FAT
-	pushw reserved		# Source
-	pushw fat_size		# Count
-	call load
-	addw $4, %sp		# We pushed 3 values to stack, but only pop 2.
-				# Remaining value (the beginning of the FAT in
-				# memory) will be used later.
+_loadfat:
+	pushw $_dataadr         # beginning of FAT
+	pushw _resclusters	# source
+	pushw _fatsize		# count
+	call _load
+	addw $4, %sp		# pushed 3 values, but only pop 2.
+				# Remaining value _dataadr  will be used later.
 	orw %bx, %bx
-	jz error_loadfat
-	pushw %bx  # root_memory, beginning of root dir
+	jz _errorloadfat
+	pushw %bx		# beginning of root dir
 
-load_root_dir:		# Use previous push as destination
-	pushw -2(%bp)	# Source
-	pushw $rootsize		# Count
-	call load
-	addw $4, %sp		# We're going to keep the last value again.
+_loadroot:			# use previous push as destination
+	pushw -2(%bp)		# source
+	pushw $_rootsize	# count
+	call _load
+	addw $4, %sp		# keep the last value again.
 	orw %bx, %bx
-	jz error_loaddir
+	jz _errorloaddir
 
-find_stage_2:
+_findstage2:
 	movw -8(%bp), %bx
-	movw entries, %cx
-file_next:
-	movw 0x0b(%bx), %ax	# Ignore directories and the volume label
+	movw _entries, %cx
+_nextfile:
+	movw 0x0b(%bx), %ax	# ignore directories and volume label
 	andw $0x18, %ax
-	jnz file_nomatch
+	jnz _nomatch
 
-	movb (%bx), %al	# If the first byte is 0x00, this is the end of the root
-	or %al, %al		# directory and we've failed to find the file.
-	jz error_notfound	# So, panic and cry about it.
+	movb (%bx), %al		# if first byte is 0x00, this is end of troot
+	or %al, %al		# and we've failed to find the file.
+	jz _errornofile	# so, panic and cry about it.
 
-	pushw %cx # Inner Loop
-	movw $st2_file, %si
+	# inner Loop
+	pushw %cx
+	movw $_stage2file, %si
 	movw %bx, %di
 	movw $11, %cx
 	repe cmpsb
 	popw %cx
-	je load_file
-file_nomatch:
+	je _loadfile
+_nomatch:
 	addw $32, %bx		# directory entries are 32 bytes
-	loop file_next
-	jmp error_notfound	# We've exhausted all entries. Quit.
+	loop _nextfile
+	jmp _errornofile	# We've exhausted all entries. Quit.
 
-load_file:
-	# bx now has directory entry of matching file
-	# If I ever decide to keep track of file size,
-	# this would be the place to save it. It's at
-	# .short 28(%bx)
-
-	movw $stg2_segment, %ax
+_loadfile:
+	# BX - dirent of matching file
+	# could save file size word from 28(%bp) (16-bit word)
+	movw $_loadseg, %ax	# load segment
 	movw %ax, %es
 
-	movw 26(%bx), %cx
+	movw 26(%bx), %cx	# cluster
 	xorw %bx, %bx
-load_next:
-	# CX has cluster to load
-	# BX has memory address to load to
+_loadnext:
+	# CX - cluster to load
+	# BX - address to load to
 
 	mov -4(%bp), %ax
 	addw %cx, %ax
 
 	pushw %bx
 	pushw %ax
-	movb cluster, %al
+	movb _cluster, %al
 	pushw %ax
-	call load
+	call _load
 	addw $6, %sp
 
 	orw %bx, %bx
-	jz error_loads2sec
+	jz _errorloadsec
 
-load_find_next_sector:
+_nextsector:
 	# The following bit of magic takes the value of cx, multiplies it by
 	# 1.5 and notes if it was odd or even before the process. This gives
 	# us the memory offset from the beginning of the FAT for the FAT
@@ -190,82 +185,81 @@ load_find_next_sector:
 	movw (%si), %cx # load cx from new location
 
 	orw %dx, %dx    # At this point cx contains a value with four garbage
-	jz fat_align_even # bits. So we check if the cluster number was odd/even.
+	jz _fatalign # bits. So we check if the cluster number was odd/even.
 	shrw $4, %cx    # If odd, garbage bits are the low-order bits. Shift.
-	jmp fat_align_end
-fat_align_even:
+	jmp _fataligned
+_fatalign:
 	andw $0xfff, %cx # If even, garbage bits are the high-order bits. Zero.
-fat_align_end:
+_fataligned:
 	# At this point cx has the next cluster
 	cmp $0xff8, %cx	# If the next cluster is not an EOF marker...
-	jl load_next    # load the next cluster.
+	jl _loadnext    # load the next cluster.
 
-jump_to_stage_2:
-	jmp $stg2_segment, $0x80 # Else, We're done loading, jmp to the next stage.
+_jmpstage2:
+	jmp $_loadseg, $0x80 # Else, We're done loading, jmp to the next stage.
 
-error_loaddir:
-error_loadfat:
-error_notfound:
-error_loads2sec:
+_errorloaddir:
+_errorloadfat:
+_errornofile:
+_errorloadsec:
 	movw $0x0e21, %ax
-error_print:
+_errorprint:
 	int $0x10
-error_freeze:
+_errorfreeze:
 	hlt
-	jmp error_freeze
+	jmp _errorfreeze
 
 # === FUNCTIONS ===
 
-# 4(%bp): Number of sectors to load
-# 6(%bp): First sector to load
-# 8(%bp): Destination starting memory address
+# 4(%bp): # of sectors
+# 6(%bp): 1st sector to load
+# 8(%bp): destination address
 # returns bx: Memory address that's one past the end of the loaded section
-load:	
-load_fpreamb:
+_load:	
+# prepare stack
 	pushw %bp
 	movw %sp, %bp
 	pushw %ax
 	pushw %cx
 	pushw %dx
-load_fbody:
 
-# Step 1: Convert sector number to CHS
-	movb sectors, %bl
-	movb heads, %al
+# #1: convert sector number to CHS
+	movb _sectors, %bl
+	movb _heads, %al
 	mulb %bl
 	movb %al, %bl
 
 	movw 6(%bp), %ax
-	divb %bl # AL has cyl, AH has remainder
+	divb %bl	# AL - cylimder, AH has remainder
 
-	movb %al, %ch	# Set CH = Cylinder
+	movb %al, %ch	# CH = cylinder
 	movb %ah, %al
 	movb $0, %ah
 
-	movb sectors, %bl	# AL has head, AH has sector
+	movb _sectors, %bl	# AL - head, AH - sector
 	divb %bl
 
 	movb %al, %dh
 
-	incb %ah # Sectors are 1-based
+	incb %ah		# sectors are 1-based
 	movb %ah, %cl
 
-# Step 2: Make the actual copy to memory
-	movb 4(%bp), %al	# Number of sectors
-	movb bootdrive, %dl	# drive
+# #2: read sectors into memory
+	movb 4(%bp), %al	# # of sectors
+	movb _bootdrive, %dl	# drive
 
 	movw 8(%bp), %bx	# destination
-	movb $2, %ah
-	int $0x13 # due to ah = 0x02, Read sectors into memory
-	jnc load_success
+	movb $0x02, %ah		# AH = 0x02
+	int $0x13		# read sectors into memory
+	jnc _loadok
 	xorw %bx, %bx
-	jmp load_freturn
-# Step 3: Find and return the end of the load
-load_success:
+	jmp _loadfin
+# #3: find and return end of _load
+_loadok:
 	movw 4(%bp), %bx
-	shlw $9, %bx # bx := bx * 512
+	äshlw $9, %bx		# bx := bx * 512
 	addw 8(%bp), %bx
-load_freturn:
+_loadfin:
 	popw %dx
 	popw %cx
 	popw %ax
@@ -275,9 +269,9 @@ load_freturn:
 
 # === Non-executable Data ===
 
-st2_file:	.ascii "STAGE2  BIN"
-bootdrive:	.byte 0
+_stage2file:	.ascii "STAGE2  BIN"
+_bootdrive:	.byte 0
 .org	446
-ptable:		.fill 64, 1, 0x00
-bootsig:	.short 0xAA55
+_pagetab:	.fill 64, 1, 0x00
+_bootsig:	.short 0xAA55
 
